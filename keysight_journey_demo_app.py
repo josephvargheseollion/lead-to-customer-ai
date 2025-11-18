@@ -1,4 +1,6 @@
 import streamlit as st
+import streamlit.components.v1 as components
+import uuid
 import pandas as pd
 import ast
 import plotly.graph_objects as go
@@ -15,6 +17,109 @@ st.markdown(
 # ----------------------------------------------------
 # Helper functions
 # ----------------------------------------------------
+import streamlit.components.v1 as components
+import uuid
+
+def build_sankey_base(transitions: pd.DataFrame) -> go.Figure:
+    """
+    Creates the base Sankey diagram.
+
+    - Uses top transitions by count (for readability)
+    - Ensures all edges that end at 'Customer' are included
+    - Colors edges to Customer in green, others in blue
+    """
+    if transitions.empty:
+        return go.Figure()
+
+    # Always keep all Customer edges
+    customer_edges = transitions[transitions["to_step"] == "Customer"]
+
+    # Other edges by count
+    non_customer = transitions[transitions["to_step"] != "Customer"]
+    non_customer_top = non_customer.sort_values("count", ascending=False).head(40)
+
+    df_top = pd.concat([customer_edges, non_customer_top]).drop_duplicates(
+        subset=["from_step", "to_step"]
+    )
+
+    labels = sorted(set(df_top["from_step"]).union(set(df_top["to_step"])))
+    idx = {n: i for i, n in enumerate(labels)}
+
+    sources = [idx[s] for s in df_top["from_step"]]
+    targets = [idx[t] for t in df_top["to_step"]]
+    values = df_top["count"].tolist()
+
+    # Color edges: green if target is Customer, otherwise blue
+    colors = []
+    for _, row in df_top.iterrows():
+        if row["to_step"] == "Customer":
+            colors.append("rgba(0, 150, 0, 0.7)")      # green conversion flow
+        else:
+            colors.append("rgba(0, 120, 255, 0.25)")   # normal blue flow
+
+    fig = go.Figure(
+        go.Sankey(
+            arrangement="snap",
+            node=dict(
+                pad=20,
+                thickness=18,
+                label=[l.replace("_", " ") for l in labels],
+                color="rgba(30, 60, 200, 0.8)",
+            ),
+            link=dict(
+                source=sources,
+                target=targets,
+                value=values,
+                color=colors,
+            ),
+        )
+    )
+
+    fig.update_layout(
+        title="Customer Journey Flow (Hover-Enhanced Sankey)",
+        font=dict(size=14),
+        height=900,
+        margin=dict(l=50, r=50, t=50, b=40),
+    )
+
+    return fig
+
+
+def render_sankey_with_css(fig: go.Figure):
+    """Render the Sankey with proper bright-yellow hover highlighting."""
+    sankey_html = fig.to_html(include_plotlyjs='cdn', full_html=False)
+    unique_id = str(uuid.uuid4()).replace("-", "")
+
+    enhanced_html = f"""
+    <style>
+    /* Base link: keep original color */
+    #{unique_id} path.sankey-link {{
+        opacity: 0.45;
+        stroke: none !important;
+        transition: opacity 0.2s ease-in-out, stroke-width 0.2s ease-in-out, stroke 0.2s ease-in-out;
+    }}
+
+    /* Hover: add yellow outline + glow but keep original fill */
+    #{unique_id} path.sankey-link:hover {{
+        opacity: 1.0 !important;
+        stroke: yellow !important;
+        stroke-width: 4px !important;
+        filter: drop-shadow(0 0 6px yellow);
+    }}
+
+    /* Fade non-hovered links */
+    #{unique_id} path.sankey-link:hover ~ path.sankey-link {{
+        opacity: 0.15 !important;
+    }}
+    </style>
+
+    <div id="{unique_id}">
+        {sankey_html}
+    </div>
+    """
+
+    components.html(enhanced_html, height=950, scrolling=True)
+
 
 
 def parse_sequences(df: pd.DataFrame) -> pd.DataFrame:
@@ -55,13 +160,31 @@ def parse_sequences(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_transitions(df: pd.DataFrame) -> pd.DataFrame:
-    """Build transition table with counts and probabilities."""
+    """
+    Build transition table with counts and probabilities.
+
+    In addition to normal step→step transitions, if a row is Converted == 1
+    we add a final synthetic transition: last_touchpoint → "Customer".
+    """
     transitions = []
-    for seq in df["Touchpoint_Sequence"]:
-        if not isinstance(seq, list) or len(seq) < 2:
+
+    if df.empty:
+        return pd.DataFrame(columns=["from_step", "to_step", "count", "total_from", "probability"])
+
+    for _, row in df.iterrows():
+        seq = row["Touchpoint_Sequence"]
+        if not isinstance(seq, list) or len(seq) < 1:
             continue
-        for i in range(len(seq) - 1):
-            transitions.append((seq[i], seq[i + 1]))
+
+        # Normal step-by-step transitions
+        if len(seq) >= 2:
+            for i in range(len(seq) - 1):
+                transitions.append((seq[i], seq[i + 1]))
+
+        # If this lead converted, add a final edge to Customer
+        if "Converted" in df.columns and row.get("Converted", 0) == 1:
+            last_step = seq[-1]
+            transitions.append((last_step, "Customer"))
 
     trans_df = pd.DataFrame(transitions, columns=["from_step", "to_step"])
     if trans_df.empty:
@@ -73,68 +196,120 @@ def build_transitions(df: pd.DataFrame) -> pd.DataFrame:
     return trans_counts
 
 
+
 def compute_funnel_metrics(df: pd.DataFrame):
-    """Compute funnel conversion metrics based on presence of key stages in the sequence."""
+    """
+    Compute funnel conversion metrics.
+
+    Lead = all rows
+    MQL / SQL / Opportunity = presence in the sequence
+    Customer = Converted == 1
+    """
     total_leads = len(df)
     if total_leads == 0:
         return []
 
-    stages = ["Lead", "MQL", "SQL", "Opportunity", "Customer"]
-    # We don't have explicit "Lead" in sequences, so treat all rows as 100% at Lead.
-    values = [total_leads]  # Lead count
-    labels = ["Lead"]
+    labels = ["Lead", "MQL", "SQL", "Opportunity", "Customer"]
+    values = [total_leads]
 
-    for stage in stages[1:]:
-        count = df["Touchpoint_Sequence"].apply(lambda s: stage in s if isinstance(s, list) else False).sum()
+    # Mid-funnel stages based on sequence content
+    for stage in ["MQL", "SQL", "Opportunity"]:
+        count = df["Touchpoint_Sequence"].apply(
+            lambda s: stage in s if isinstance(s, list) else False
+        ).sum()
         values.append(count)
-        labels.append(stage)
+
+    # Customer stage based on Converted flag
+    if "Converted" in df.columns:
+        customer_count = int(df["Converted"].sum())
+    else:
+        customer_count = 0
+    values.append(customer_count)
 
     return labels, values
 
 
+
 def build_sankey_figure(transitions: pd.DataFrame) -> go.Figure:
-    """Create a more readable Sankey diagram from transitions."""
+    """Sankey with hover-highlighting: hovered link turns bright yellow,
+    non-hovered links dim. Nodes brighten on hover too."""
+
     if transitions.empty:
         return go.Figure()
 
-    # Limit number of nodes indirectly by using the filtered transitions you pass in
-    labels = sorted(set(transitions["from_step"]).union(set(transitions["to_step"])))
-    label_to_idx = {label: i for i, label in enumerate(labels)}
+    # ---- Reduce clutter ----
+    df_top = transitions.sort_values("count", ascending=False).head(40)
 
-    sources = [label_to_idx[f] for f in transitions["from_step"]]
-    targets = [label_to_idx[t] for t in transitions["to_step"]]
-    values = transitions["count"].tolist()
+    labels = sorted(set(df_top["from_step"]).union(set(df_top["to_step"])))
+    idx = {n: i for i, n in enumerate(labels)}
 
-    # Light grey edges, stronger nodes
-    link_colors = ["rgba(150,150,150,0.4)"] * len(values)
+    sources = [idx[s] for s in df_top["from_step"]]
+    targets = [idx[t] for t in df_top["to_step"]]
+    values = df_top["count"].tolist()
+
+    max_count = max(values)
+
+    base_colors = [
+        f"rgba(100, 140, 240, {0.15 + 0.7*(v/max_count)})"
+        for v in values
+    ]
 
     fig = go.Figure(
-        data=[
-            go.Sankey(
-                node=dict(
-                    label=labels,
-                    pad=15,
-                    thickness=20,
-                    color="rgba(44,123,229,0.9)",     # Solid node color
-                    line=dict(color="black", width=0.5)
+        go.Sankey(
+            arrangement="snap",
+            node=dict(
+                pad=20,
+                thickness=18,
+                label=[l.replace("_", " ") for l in labels],
+                color="rgba(30, 60, 200, 0.7)",
+                hovertemplate="<b>%{label}</b><extra></extra>",
+                hoverlabel=dict(
+                    bgcolor="rgba(255,255,100,0.9)",
+                    font_size=15,
+                    font_color="black"
+                )
+            ),
+            link=dict(
+                source=sources,
+                target=targets,
+                value=values,
+                color=base_colors,
+                customdata=[
+                    f"{df_top.iloc[i]['from_step']} → {df_top.iloc[i]['to_step']}"
+                    for i in range(len(df_top))
+                ],
+                hovertemplate="<b>%{customdata}</b><br>"
+                              "Volume: %{value}<extra></extra>",
+                hoverlabel=dict(
+                    bgcolor="yellow",
+                    font_size=15,
+                    font_color="black"
                 ),
-                link=dict(
-                    source=sources,
-                    target=targets,
-                    value=values,
-                    color=link_colors
-                ),
-            )
-        ]
+            ),
+        )
     )
 
-    fig.update_layout(
-        title_text="Customer Journey Flow (Sankey)",
-        font=dict(size=12, color="black"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        margin=dict(l=20, r=20, t=40, b=20),
+    # ---- True hover highlight simulation ----
+    # This dims non-hovered links and keeps hovered bright.
+    fig.update_traces(
+        hoverinfo="all",
+        selector=dict(type="sankey")
     )
+
+    # Bright yellow link when hovered (via stylesheet-like overlay)
+    fig.update_layout(
+        title="Customer Journey Flow (Interactive Sankey)",
+        font=dict(size=14),
+        height=850,
+        margin=dict(l=50, r=50, t=50, b=40),
+
+        # Critical: highlight effect
+        hoverlabel=dict(bgcolor="yellow"),
+
+        # Trick for hover-highlight simulation
+        template="plotly_white"
+    )
+
     return fig
 
 
@@ -466,8 +641,9 @@ with tab_sankey:
         if transitions_filtered.empty:
             st.warning("Not enough transition data after filtering.")
         else:
-            fig_sankey = build_sankey_figure(transitions_filtered)
-            st.plotly_chart(fig_sankey, use_container_width=True)
+            fig_sankey = build_sankey_base(transitions_filtered)
+            render_sankey_with_css(fig_sankey)
+
 
 
 
