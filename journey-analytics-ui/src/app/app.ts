@@ -1,5 +1,6 @@
 import { Component } from '@angular/core';
 import { NgIf, NgSwitch, NgSwitchCase, CommonModule, NgSwitchDefault } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { HttpClientModule } from '@angular/common/http';
 import { Overview } from './components/overview/overview';
 import { Sankey } from './components/sankey/sankey';
@@ -9,6 +10,9 @@ import { Lengths } from './components/lengths/lengths';
 import { Heatmap } from './components/heatmap/heatmap';
 import { TopJourneys } from './components/top-journeys/top-journeys';
 import { JourneyStateService } from './services/journey-state';
+import { JourneyUploadService } from './services/journey-upload.service';
+import { AnalysisService } from './services/analysis.service';
+import { UploadEvent } from './interfaces/upload-event';
 
 
 @Component({
@@ -26,15 +30,26 @@ import { JourneyStateService } from './services/journey-state';
     Heatmap,
     TopJourneys,
     CommonModule,
+    ReactiveFormsModule,
+    HttpClientModule,
     NgSwitchDefault
   ],
   templateUrl: './app.html',
   styleUrls: ['./app.scss'],
 })
 export class App {
-  constructor(private state: JourneyStateService) {}
   title = 'Customer Journey Intelligence Demo';
+  form: FormGroup;
   selectedFile: File | null = null;
+
+  uploadedBucket: string | null = null;
+  uploadedKey: string | null = null;
+  uploadProgress = -1;
+  isUploading = false;
+  isError = false;
+  isSuccess = false;
+  isAnalyzing = false;
+  errorMessage = '';
   uploadMessage: string = '';
   tabs = [
     { id: 'overview', label: 'Overview', icon: 'bi bi-bar-chart' },
@@ -48,6 +63,14 @@ export class App {
 
   activeTab = 'overview';
 
+  constructor(
+    private journeyState: JourneyStateService,
+    private fb: FormBuilder,
+    private uploadService: JourneyUploadService,
+    private analysisService: AnalysisService
+  ) { 
+    this.form = this.fb.group({});
+  }
   setTab(id: string) {
     this.activeTab = id;
   }
@@ -59,30 +82,64 @@ export class App {
   }
 
   uploadFile() {
-    if (!this.selectedFile) return;
+     if (!this.selectedFile) return;
 
-    const formData = new FormData();
-    formData.append('file', this.selectedFile);
+    this.resetStatus();
+    this.isUploading = true;
+    this.uploadProgress = 0;
 
-    this.uploadMessage = "Uploading & analyzing…";
+    this.uploadService.uploadFile(this.selectedFile).subscribe({
+      next: (event: UploadEvent) => {
+        if (event.type === 'progress' && typeof event.progress === 'number') {
+          this.uploadProgress = event.progress;
+        }
+        if (event.type === 'complete' && event.result) {
+          this.isUploading = false;
+          this.isSuccess = true;
 
-    fetch('https://YOUR_API_GATEWAY_URL/analyze', {
-      method: 'POST',
-      body: formData
-    })
-      .then(res => res.json())
-      .then(data => {
-        this.uploadMessage = "Analysis complete!";
-        console.log('Result:', data);
+          this.uploadedBucket = event.result.bucket;
+          this.uploadedKey = event.result.key;
 
-        // Store in your shared journey state service
-        // so the other tabs (Sankey, Markov, etc.) refresh
-        this.state.setResult(data);
+          if (this.uploadedBucket && this.uploadedKey) {
+            this.startAnalysis(this.uploadedBucket, this.uploadedKey);
+          }
+        }
+      },
+      error: (err) => {
+        console.error('Upload error:', err);
+        this.isUploading = false;
+        this.isError = true;
+        this.errorMessage =
+          err?.message || 'File upload failed. Please try again.';
+      },
+    });
+  }
 
-      })
-      .catch(err => {
-        this.uploadMessage = "Upload failed.";
-        console.error(err);
-      });
+  private startAnalysis(bucket: string, key: string) {
+    this.isAnalyzing = true;
+    this.isError = false;
+    this.errorMessage = '';
+    this.analysisService.analyzeFile(bucket, key).subscribe({
+      next: (result) => {
+        this.isAnalyzing = false;
+        // push result into JourneyStateService so tabs can render
+        this.journeyState.setResult(result);
+      },
+      error: (err) => {
+        console.error('Analysis error:', err);
+        this.isAnalyzing = false;
+        this.isError = true;
+        this.errorMessage =
+          'Journey analysis failed. Please retry.';
+      },
+    });
+  }
+
+  private resetStatus() {
+    this.isError = false;
+    this.isSuccess = false;
+    this.isAnalyzing = false;
+    this.uploadProgress = -1;
+    this.errorMessage = '';
   }
 }
