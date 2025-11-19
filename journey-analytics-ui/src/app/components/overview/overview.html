@@ -1,0 +1,56 @@
+<div class="row mb-3">
+  <div class="col-md-6">
+    <label class="form-label fw-semibold">Upload journey CSV</label>
+    <input
+      type="file"
+      class="form-control"
+      (change)="onFileSelected($event)"
+      accept=".csv"
+    />
+    <div class="form-text">
+      Use the synthetic Keysight-style dataset or real exported journeys.
+    </div>
+  </div>
+</div>
+
+<div *ngIf="loading" class="alert alert-info mt-2">
+  Analyzing journeys…
+</div>
+<div *ngIf="error" class="alert alert-danger mt-2">
+  {{ error }}
+</div>
+
+<div *ngIf="metrics" class="row mt-3">
+  <div class="col-md-4 mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title text-muted">Total Leads</h6>
+        <div class="fs-4 fw-bold">
+          {{ metrics.totalLeads | number }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4 mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title text-muted">Conversion Rate</h6>
+        <div class="fs-4 fw-bold">
+          {{ metrics.conversionRate | percent:'1.1-2' }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4 mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title text-muted">Avg Touchpoints</h6>
+        <div class="fs-4 fw-bold">
+          {{ metrics.averageTouchpoints | number:'1.1-1' }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

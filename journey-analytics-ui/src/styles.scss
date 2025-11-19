@@ -1,0 +1,117 @@
+/* You can add global styles to this file, and also import other style files */
+// styles.scss
+
+// --- Typography & Fonts ---
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+$font-base: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+$font-heading: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+body {
+  font-family: $font-base;
+  line-height: 1.6;
+  color: #1a1a1a; // dark text
+  background-color: #fafbfc; // light background
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: $font-heading;
+  margin-bottom: 1rem;
+  color: #111; // nearly black
+  line-height: 1.2;
+}
+
+a {
+  color: #0052ff; // primary link colour (blueish)
+  text-decoration: none;
+  &:hover {
+    color: #0039b3;
+    text-decoration: underline;
+  }
+}
+
+// --- Color Palette ---
+$color-primary: #0052ff; // strong blue
+$color-primary-dark: #0039b3;
+$color-secondary: #6c757d; // muted grey
+$color-background: #fafbfc;
+$color-surface: #ffffff;
+$color-on-surface: #1a1a1a;
+$color-border: #e3e6eb; // light border
+$color-muted: #6c757d;
+
+// --- Utility & Layout ---
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.card {
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.btn-primary {
+  background-color: $color-primary;
+  border-color: $color-primary;
+  &:hover {
+    background-color: $color-primary-dark;
+    border-color: $color-primary-dark;
+  }
+}
+
+// --- For the App Shell ---
+.app-shell {
+  min-height: 100vh;
+  padding: 2rem 0;
+  background: $color-background;
+}
+
+.app-tabs {
+  margin-bottom: 1.5rem;
+
+  .nav-tabs {
+    .nav-link {
+      font-weight: 500;
+      color: $color-on-surface;
+      &.active {
+        color: $color-primary;
+      }
+    }
+  }
+}
+
+// --- Forms & Inputs ---
+.form-label {
+  font-weight: 500;
+  color: $color-on-surface;
+}
+.form-control {
+  border: 1px solid $color-border;
+  &:focus {
+    border-color: $color-primary;
+    box-shadow: 0 0 0 0.2rem rgba($color-primary, 0.25);
+  }
+}
+
+// --- Tables (for “Top Journeys” tab) ---
+.table {
+  width: 100%;
+  margin-bottom: 1rem;
+  color: $color-on-surface;
+  th {
+    font-weight: 600;
+    border-bottom: 1px solid $color-border;
+  }
+  tbody tr {
+    &:hover {
+      background-color: #f3f5f8; // subtle hover
+    }
+  }
+}
+

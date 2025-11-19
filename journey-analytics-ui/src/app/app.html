@@ -1,0 +1,40 @@
+<div class="app-shell container-fluid">
+  <div class="row mb-3">
+    <div class="col-12">
+      <h1 class="h3 mb-1">{{ title }}</h1>
+      <p class="text-muted mb-0">
+        Upload lead journey data and explore Sankey, Markov, funnel, and journey analytics.
+      </p>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-12 app-card">
+      <!-- Tabs -->
+      <ul class="nav nav-tabs app-tabs" role="tablist">
+        <li class="nav-item" *ngFor="let tab of tabs">
+          <button
+            class="nav-link"
+            [class.active]="tab.id === activeTab"
+            type="button"
+            (click)="setTab(tab.id)"
+          >
+            {{ tab.label }}
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content pt-3">
+        <div [ngSwitch]="activeTab">
+          <app-overview *ngSwitchCase="'overview'"></app-overview>
+          <app-sankey *ngSwitchCase="'sankey'"></app-sankey>
+          <app-markov *ngSwitchCase="'markov'"></app-markov>
+          <app-funnel *ngSwitchCase="'funnel'"></app-funnel>
+          <app-lengths *ngSwitchCase="'lengths'"></app-lengths>
+          <app-heatmap *ngSwitchCase="'heatmap'"></app-heatmap>
+          <app-top-journeys *ngSwitchCase="'top-journeys'"></app-top-journeys>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

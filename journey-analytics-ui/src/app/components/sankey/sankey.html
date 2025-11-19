@@ -1,0 +1,10 @@
+<div *ngIf="!fig" class="alert alert-warning">
+  No Sankey data available.
+</div>
+
+<div *ngIf="fig">
+  <plotly-chart
+    [data]="fig.data"
+    [layout]="fig.layout"
+  ></plotly-chart>
+</div>
