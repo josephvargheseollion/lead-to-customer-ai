@@ -1,64 +1,52 @@
-import { Component } from '@angular/core';
-import { CommonModule, DecimalPipe } from '@angular/common';
-import { NgIf } from '@angular/common';
-import { JourneyApiService } from '../../services/journey-api';
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule, DecimalPipe, NgIf } from '@angular/common';
 import { JourneyStateService } from '../../services/journey-state';
-
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-overview',
   standalone: true,
-  imports: [
-    NgIf,
-    CommonModule,
-    DecimalPipe
-  ],
+  imports: [NgIf, CommonModule, DecimalPipe],
   templateUrl: './overview.html',
   styleUrls: ['./overview.scss'],
 })
-export class Overview {
+export class Overview implements OnInit, OnDestroy {
+
+  metrics: any = null;
   loading = false;
   error: string | null = null;
 
-  metrics: any = null;
+  private sub?: Subscription;
 
-  constructor(
-    private api: JourneyApiService,
-    private state: JourneyStateService
-  ) {
-    const existing = this.state.getResult();
-    if (existing) {
-      this.metrics = existing.metrics;
-    }
-  }
+  constructor(private state: JourneyStateService) {}
 
-  onFileSelected(event: Event) {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
+  ngOnInit(): void {
+    console.log("Overview: ngOnInit subscribing to result$");
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const csvText = reader.result as string;
-      this.callAnalyze(csvText);
-    };
-    reader.readAsText(file);
-  }
+    this.sub = this.state.result$.subscribe(res => {
+      console.log("Overview: received new state:", res);
 
-  callAnalyze(csvText: string) {
-    this.loading = true;
-    this.error = null;
+      if (!res) {
+        console.log("Overview: no result yet.");
+        this.metrics = null;
+        return;
+      }
 
-    this.api.analyzeCsv(csvText, 20).subscribe({
-      next: (res) => {
-        this.loading = false;
-        this.state.setResult(res);
-        this.metrics = res.metrics;
-      },
-      error: (err) => {
-        this.loading = false;
-        this.error = err?.error?.error || 'Error analyzing CSV';
-      },
+      if (!res.metrics) {
+        console.log("Overview: result arrived but no metrics present.");
+        this.metrics = null;
+        return;
+      }
+
+      console.log("Overview: metrics updated.");
+      this.metrics = res.metrics;
     });
+  }
+
+  ngOnDestroy(): void {
+    if (this.sub) {
+      console.log("Overview: unsubscribing from result$");
+      this.sub.unsubscribe();
+    }
   }
 }

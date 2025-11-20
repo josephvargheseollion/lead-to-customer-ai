@@ -1,7 +1,12 @@
 // src/app/services/journey-state.ts
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
-
+export interface MarkovEdge {
+  from: string;
+  to: string;
+  count: number;
+  probability: number;
+}
 export interface SankeyLink {
   source: number;
   target: number;

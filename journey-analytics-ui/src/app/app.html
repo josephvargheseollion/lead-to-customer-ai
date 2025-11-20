@@ -1,31 +1,74 @@
 <div class="container mt-4">
 
   <h2 class="mb-4">{{ title }}</h2>
+
   <!-- ===== FILE UPLOAD BOX (Ollion-style) ===== -->
   <div class="upload-box p-4 mb-4 border rounded shadow-sm">
     <h5 class="mb-3">Upload Customer Journey CSV</h5>
 
     <div class="d-flex align-items-center gap-3">
-      <input type="file" class="form-control" (change)="onFileSelected($event)" accept=".csv" />
+      <input type="file"
+             class="form-control"
+             (change)="onFileSelected($event)"
+             accept=".csv" />
 
-      <button class="btn btn-primary" [disabled]="!selectedFile" (click)="uploadFile()">
+      <button class="btn btn-primary"
+              [disabled]="!selectedFile"
+              (click)="uploadFile()">
         Analyze
       </button>
     </div>
 
-    <div *ngIf="uploadMessage" class="mt-3 alert alert-info">
-      {{ uploadMessage }}
+    <!-- Upload Progress Bar -->
+    <div *ngIf="isUploading" class="mt-3">
+      <label class="form-label">Uploading file...</label>
+      <div class="progress">
+        <div class="progress-bar progress-bar-striped progress-bar-animated"
+             role="progressbar"
+             [style.width.%]="uploadProgress">
+          {{ uploadProgress }}%
+        </div>
+      </div>
+      <div class="text-muted small mt-1">
+        Time elapsed: {{ elapsedUploadSec }} sec
+      </div>
+    </div>
+
+    <!-- Upload errors -->
+    <div *ngIf="isError" class="mt-3 alert alert-danger">
+      {{ errorMessage }}
+    </div>
+
+    <div *ngIf="isSuccess" class="mt-3 alert alert-success">
+      File uploaded successfully.
     </div>
   </div>
   <!-- ===== END UPLOAD BOX ===== -->
+
+  <!-- Analysis Spinner -->
+  <div *ngIf="isAnalyzing" class="mb-4 text-center">
+    <div class="spinner-border text-primary" role="status"
+         style="width: 3rem; height: 3rem;">
+    </div>
+    <p class="mt-2 text-muted">
+      Processing uploaded journey data...  
+      <strong>{{ elapsedAnalysisSec }} sec</strong>
+    </p>
+  </div>
+
+  <!-- ===== TABS ===== -->
   <ul class="nav nav-tabs">
     <li class="nav-item" *ngFor="let tab of tabs">
-      <a class="nav-link" [class.active]="activeTab === tab.id" href="javascript:void(0)" (click)="setTab(tab.id)">
+      <a class="nav-link"
+         [class.active]="activeTab === tab.id"
+         href="javascript:void(0)"
+         (click)="setTab(tab.id)">
         <i [class]="tab.icon"></i> {{ tab.label }}
       </a>
     </li>
   </ul>
 
+  <!-- ===== TAB CONTENT ===== -->
   <div class="mt-4" [ngSwitch]="activeTab">
 
     <app-overview *ngSwitchCase="'overview'"></app-overview>

@@ -13,6 +13,7 @@ import { JourneyStateService } from './services/journey-state';
 import { JourneyUploadService } from './services/journey-upload.service';
 import { AnalysisService } from './services/analysis.service';
 import { UploadEvent } from './interfaces/upload-event';
+import { TimerService } from './services/timer.service';
 
 
 @Component({
@@ -62,14 +63,21 @@ export class App {
   ];
 
   activeTab = 'overview';
-
+  elapsedUploadSec = 0;
+  elapsedAnalysisSec = 0;
   constructor(
     private journeyState: JourneyStateService,
     private fb: FormBuilder,
     private uploadService: JourneyUploadService,
-    private analysisService: AnalysisService
+    private analysisService: AnalysisService,
+    private timerService: TimerService
   ) {
     this.form = this.fb.group({});
+    // subscribe once for updates
+    this.timerService.elapsedSec$.subscribe((sec) => {
+      if (this.isUploading) this.elapsedUploadSec = sec;
+      if (this.isAnalyzing) this.elapsedAnalysisSec = sec;
+    });
   }
   setTab(id: string) {
     this.activeTab = id;
@@ -87,7 +95,8 @@ export class App {
     this.resetStatus();
     this.isUploading = true;
     this.uploadProgress = 0;
-
+    this.elapsedUploadSec = 0;
+    this.timerService.start();  // start upload timer
     console.log("uploadFile() called. Selected file:", this.selectedFile);
 
     this.uploadService.uploadFile(this.selectedFile).subscribe({
@@ -104,6 +113,7 @@ export class App {
 
         // 2) Completion event
         if (event.type === 'complete') {
+          this.timerService.stop();
           console.log("Upload complete event:", event);
 
           if (!event.result) {
@@ -139,6 +149,7 @@ export class App {
       },
 
       error: (err) => {
+        this.timerService.stop();          // stop timer
         console.error("Upload error:", err);
         console.error("Full error object:", JSON.stringify(err, null, 2));
 
@@ -156,6 +167,9 @@ export class App {
     console.log("Key received:", key);
 
     this.isAnalyzing = true;
+    this.elapsedAnalysisSec = 0;
+
+    this.timerService.start();      // start analysis timer
     this.isError = false;
     this.errorMessage = '';
 
@@ -166,6 +180,7 @@ export class App {
 
     this.analysisService.analyzeFile(bucket, key).subscribe({
       next: (result) => {
+        this.timerService.stop();   // stop timer
         console.log("AnalysisService response received.");
         console.log("Raw analysis result:", JSON.parse(JSON.stringify(result)));
 
@@ -178,6 +193,7 @@ export class App {
       },
 
       error: (err) => {
+        this.timerService.stop();   // stop timer
         console.error("AnalysisService encountered an error.");
         console.error("Error object:", err);
         console.error("Error JSON:", JSON.stringify(err, null, 2));
