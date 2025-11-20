@@ -1,42 +1,73 @@
+// src/app/services/journey-state.ts
 import { Injectable } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+
+export interface SankeyLink {
+  source: number;
+  target: number;
+  value: number;
+  probability?: number;
+  toCustomer?: boolean;
+}
+
+export interface SankeyData {
+  labels: string[];
+  links: SankeyLink[];
+}
+
+export interface JourneyAnalysisResult {
+  metrics?: any;
+  sankey?: SankeyData;
+  markovEdges?: any;
+  journeyLengths?: any;
+  topJourneys?: any;
+  nextBestStep?: any;
+  executionMs?: number;
+  [key: string]: any;
+}
 
 @Injectable({ providedIn: 'root' })
 export class JourneyStateService {
-  private analysisResult: any | null = null;
+  private resultSubject = new BehaviorSubject<JourneyAnalysisResult | null>(null);
 
-  setResult(result: any) {
-    this.analysisResult = result;
+  // Component-facing observable
+  result$: Observable<JourneyAnalysisResult | null> = this.resultSubject.asObservable();
+
+  setResult(result: JourneyAnalysisResult) {
+    console.log('JourneyStateService: setResult called');
+    this.resultSubject.next(result);
   }
 
-  getResult() {
-    return this.analysisResult;
+  getResult(): JourneyAnalysisResult | null {
+    return this.resultSubject.value;
   }
 
-  getSankey() {
-    return this.analysisResult?.sankey || null;
+  getSankey(): SankeyData | null {
+    return this.resultSubject.value?.sankey ?? null;
   }
 
   getMarkov() {
-    return this.analysisResult?.markov || null;
+    return this.resultSubject.value?.markovEdges ?? null;
   }
 
   getFunnel() {
-    return this.analysisResult?.funnel || null;
+    return this.resultSubject.value?.metrics?.funnel ?? null;
   }
 
   getLengths() {
-    return this.analysisResult?.lengths || null;
+    return this.resultSubject.value?.journeyLengths ?? null;
   }
 
   getHeatmap() {
-    return this.analysisResult?.heatmap || null;
+    return this.resultSubject.value?.['heatmap'] ?? null;
   }
 
   getTopJourneys() {
-    return this.analysisResult?.top_journeys || null;
+    return this.resultSubject.value?.topJourneys ?? null;
   }
 
   reset() {
-    this.analysisResult = null;
+    console.log('JourneyStateService: reset');
+    this.resultSubject.next(null);
   }
 }

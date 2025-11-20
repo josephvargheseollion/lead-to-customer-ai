@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, tap, catchError  } from 'rxjs';
 
 // If you have environments, use that:
 import { environment } from '../../environments/environment';
@@ -27,8 +27,28 @@ export class AnalysisService {
    *  - return a single JSON object with those sections
    */
   analyzeFile(bucket: string, key: string): Observable<any> {
-    const payload = { bucket, key };
+  console.log("AnalysisService.analyzeFile() called.");
+  console.log("Bucket:", bucket);
+  console.log("Key:", key);
 
-    return this.http.post<any>(`${this.apiBase}/analyze`, payload);
-  }
+  const payload = { bucket, key };
+
+  console.log("API Base URL:", this.apiBase);
+  console.log("Final POST URL:", `${this.apiBase}/analyze`);
+  console.log("Request payload being sent:", payload);
+
+  return this.http.post<any>(`${this.apiBase}/analyze`, payload).pipe(
+    tap((response) => {
+      console.log("AnalysisService response received.");
+      console.log("Raw response:", JSON.parse(JSON.stringify(response)));
+    }),
+    catchError((err) => {
+      console.error("AnalysisService error:");
+      console.error("Error object:", err);
+      console.error("Error JSON:", JSON.stringify(err, null, 2));
+      throw err;
+    })
+  );
+}
+
 }

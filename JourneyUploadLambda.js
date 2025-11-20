@@ -6,14 +6,14 @@ import {
 } from "@aws-sdk/client-s3";
 
 const REGION = "us-east-1";
-const BUCKET = "your-journey-files-bucket"; // TODO: update
+const BUCKET = "ollion-customer-journey-data-files";
+
 const s3 = new S3Client({ region: REGION });
 
-// Same sanitizer you had before
 function sanitizeKey(name) {
   return name
     .normalize("NFKD")
-    .replace(/[^\w.\-]/g, "_") // keep letters, numbers, _, ., -
+    .replace(/[^\w.\-]/g, "_")
     .replace(/_+/g, "_")
     .trim();
 }
@@ -24,55 +24,92 @@ function parseBody(event) {
     try {
       return JSON.parse(event.body);
     } catch (e) {
-      console.error("Failed to parse event.body:", e);
+      console.error("[ERROR] Failed to parse event.body:", e);
       return {};
     }
   }
   if (typeof event.body === "object" && event.body !== null) {
     return event.body;
   }
-  return event;
+  return {};
 }
 
 export const handler = async (event) => {
-  console.log("===== Incoming Event (JourneyUploadLambda) =====");
+  console.log("====================================================================");
+  console.log("JourneyUploadLambda - Invocation Start");
+  console.log("====================================================================");
+
+  console.log("[INFO] Incoming AWS Event:");
   console.log(JSON.stringify(event, null, 2));
 
+  const startTime = Date.now();
+
   try {
+    // ---------------------------------------------------------------------
+    // Parse request body
+    // ---------------------------------------------------------------------
+    console.log("[INFO] Parsing incoming request...");
     const body = parseBody(event);
+    console.log("[INFO] Parsed request body:");
+    console.log(JSON.stringify(body, null, 2));
+
     const { filename, uploadId, partNumber, chunkBase64 } = body;
 
-    console.log("Parsed body:", body);
-
+    // ---------------------------------------------------------------------
+    // Validate filename
+    // ---------------------------------------------------------------------
     if (!filename) {
-      console.error("Missing required parameter: filename");
+      console.error("[ERROR] Missing required parameter: filename");
+
       return {
         statusCode: 400,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        },
-        body: JSON.stringify({ message: "filename required" }),
+        headers: { "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ message: "filename is required" }),
       };
     }
 
     const key = sanitizeKey(filename);
-    console.log("Original filename:", filename);
-    console.log("Sanitized S3 key:", key);
+    console.log(`[INFO] Original filename: ${filename}`);
+    console.log(`[INFO] Sanitized S3 key: ${key}`);
 
-    // ------------------------------------------------------------------
-    // CASE 1: Initiate multipart upload (no uploadId yet)
-    // ------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // CASE 1: Initiate Multipart Upload
+    // ---------------------------------------------------------------------
     if (!uploadId) {
-      console.log(`Initiating multipart upload for file: ${key}`);
+      console.log("[INFO] No uploadId detected. Starting new multipart upload...");
+      console.log(`[INFO] Initiating upload for key: ${key}`);
 
-      const initResponse = await s3.send(
-        new CreateMultipartUploadCommand({
-          Bucket: BUCKET,
-          Key: key,
-        })
-      );
+      let initResponse;
+      try {
+        initResponse = await s3.send(
+          new CreateMultipartUploadCommand({
+            Bucket: BUCKET,
+            Key: key,
+          })
+        );
+      } catch (s3err) {
+        console.error("[ERROR] Failed to initiate multipart upload via S3:");
+        console.error(s3err);
 
-      console.log("Multipart upload initiated:", initResponse);
+        return {
+          statusCode: 500,
+          headers: { "Access-Control-Allow-Origin": "*" },
+          body: JSON.stringify({
+            message: "Failed to initiate multipart upload",
+            error: s3err.message,
+            stack: s3err.stack,
+          }),
+        };
+      }
+
+      console.log("[INFO] Multipart upload initiated successfully:");
+      console.log(JSON.stringify(initResponse, null, 2));
+
+      const durationMs = Date.now() - startTime;
+      console.log(`[INFO] Multipart Initiation Duration: ${durationMs} ms`);
+      console.log("====================================================================");
+      console.log("JourneyUploadLambda - Invocation Complete (Init Success)");
+      console.log("====================================================================");
 
       return {
         statusCode: 200,
@@ -87,45 +124,80 @@ export const handler = async (event) => {
           bucket: BUCKET,
           key,
           message: "Multipart upload initiated successfully",
+          durationMs,
         }),
       };
     }
 
-    // ------------------------------------------------------------------
-    // CASE 2: Upload a part directly (NO presigned URLs)
-    // ------------------------------------------------------------------
-    if (!partNumber || !chunkBase64) {
-      console.error(
-        "Missing partNumber or chunkBase64 for upload part. Body:",
-        body
-      );
+    // ---------------------------------------------------------------------
+    // CASE 2: Upload Part
+    // ---------------------------------------------------------------------
+    console.log("[INFO] UploadId provided. Uploading part...");
+
+    if (!partNumber) {
+      console.error("[ERROR] Missing parameter: partNumber");
       return {
         statusCode: 400,
         headers: { "Access-Control-Allow-Origin": "*" },
         body: JSON.stringify({
-          message:
-            "uploadId, partNumber and chunkBase64 are required for part upload",
+          message: "partNumber is required for upload part",
+        }),
+      };
+    }
+
+    if (!chunkBase64) {
+      console.error("[ERROR] Missing parameter: chunkBase64");
+      return {
+        statusCode: 400,
+        headers: { "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({
+          message: "chunkBase64 is required for upload part",
         }),
       };
     }
 
     console.log(
-      `Uploading part ${partNumber} for key=${key}, uploadId=${uploadId}`
+      `[INFO] Uploading part ${partNumber} for key: ${key}, uploadId: ${uploadId}`
     );
 
     const buffer = Buffer.from(chunkBase64, "base64");
+    console.log(`[INFO] Chunk size: ${buffer.length} bytes`);
 
-    const uploadPartRes = await s3.send(
-      new UploadPartCommand({
-        Bucket: BUCKET,
-        Key: key,
-        UploadId: uploadId,
-        PartNumber: partNumber,
-        Body: buffer,
-      })
-    );
+    let uploadPartRes;
+    try {
+      uploadPartRes = await s3.send(
+        new UploadPartCommand({
+          Bucket: BUCKET,
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+          Body: buffer,
+        })
+      );
+    } catch (s3err) {
+      console.error("[ERROR] S3 UploadPart operation failed:");
+      console.error(s3err);
 
-    console.log("UploadPart response:", uploadPartRes);
+      return {
+        statusCode: 500,
+        headers: { "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({
+          message: `Failed to upload part ${partNumber}`,
+          error: s3err.message,
+          stack: s3err.stack,
+        }),
+      };
+    }
+
+    console.log("[INFO] Part uploaded successfully.");
+    console.log("[INFO] UploadPart Response:");
+    console.log(JSON.stringify(uploadPartRes, null, 2));
+
+    const durationMs = Date.now() - startTime;
+    console.log(`[INFO] Part Upload Duration: ${durationMs} ms`);
+    console.log("====================================================================");
+    console.log("JourneyUploadLambda - Invocation Complete (Part Success)");
+    console.log("====================================================================");
 
     return {
       statusCode: 200,
@@ -137,21 +209,32 @@ export const handler = async (event) => {
       },
       body: JSON.stringify({
         message: `Part ${partNumber} uploaded successfully`,
-        eTag: uploadPartRes.ETag,
         partNumber,
+        eTag: uploadPartRes.ETag,
+        durationMs,
       }),
     };
   } catch (err) {
-    console.error("Error in JourneyUploadLambda:", err);
+    // ---------------------------------------------------------------------
+    // GLOBAL CATCH BLOCK
+    // ---------------------------------------------------------------------
+    console.error("[ERROR] Uncaught exception during upload process:");
+    console.error(err);
+
+    const durationMs = Date.now() - startTime;
+
+    console.log("====================================================================");
+    console.log("JourneyUploadLambda - Invocation Complete (Error)");
+    console.log("====================================================================");
+
     return {
       statusCode: 500,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      },
+      headers: { "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({
-        message: "Internal server error",
+        message: "Internal server error during upload",
         error: err.message,
         stack: err.stack,
+        durationMs,
       }),
     };
   }

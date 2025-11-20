@@ -3,18 +3,16 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { JourneyStateService } from './journey-state';
 import { UploadEvent } from '../interfaces/upload-event';
 
 
 
 @Injectable({ providedIn: 'root' })
 export class JourneyUploadService {
-    private readonly apiBase = `${environment.apiBaseUrl}/journey`;
+    private readonly apiBase = `${environment.apiBaseUrl}`;
 
     constructor(
-        private http: HttpClient,
-        private state: JourneyStateService
+        private http: HttpClient
     ) {
         console.log('JourneyUploadService initialized with API base:', this.apiBase);
     }
@@ -36,7 +34,7 @@ export class JourneyUploadService {
         console.log(
             `Uploading part ${partNumber}/${totalParts} for file ${filename} (no presigned URLs)`
         );
-        return this.http.post(`${this.apiBase}/upload-part`, {
+        return this.http.post(`${this.apiBase}/upload`, {
             filename,
             uploadId,
             partNumber,
@@ -52,7 +50,7 @@ export class JourneyUploadService {
         parts: { ETag: string; PartNumber: number }[]
     ): Observable<any> {
         console.log('Completing multipart upload for file:', filename);
-        return this.http.post(`${this.apiBase}/complete`, {
+        return this.http.post(`${this.apiBase}/upload/complete`, {
             filename,
             uploadId,
             parts,

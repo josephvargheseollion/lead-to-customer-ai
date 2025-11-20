@@ -1,10 +1,12 @@
+<!-- src/app/components/sankey/sankey.html -->
 <div *ngIf="!fig" class="alert alert-warning">
-  No Sankey data available.
+  No Sankey data available. Upload and analyze a file first.
 </div>
 
 <div *ngIf="fig">
   <plotly-chart
     [data]="fig.data"
     [layout]="fig.layout"
+    class="sankey-chart"
   ></plotly-chart>
 </div>

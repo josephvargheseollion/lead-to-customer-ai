@@ -68,7 +68,7 @@ export class App {
     private fb: FormBuilder,
     private uploadService: JourneyUploadService,
     private analysisService: AnalysisService
-  ) { 
+  ) {
     this.form = this.fb.group({});
   }
   setTab(id: string) {
@@ -82,31 +82,66 @@ export class App {
   }
 
   uploadFile() {
-     if (!this.selectedFile) return;
+    if (!this.selectedFile) return;
 
     this.resetStatus();
     this.isUploading = true;
     this.uploadProgress = 0;
 
+    console.log("uploadFile() called. Selected file:", this.selectedFile);
+
     this.uploadService.uploadFile(this.selectedFile).subscribe({
       next: (event: UploadEvent) => {
-        if (event.type === 'progress' && typeof event.progress === 'number') {
-          this.uploadProgress = event.progress;
+        console.log("UploadEvent received:", JSON.parse(JSON.stringify(event)));
+
+        // 1) Progress events
+        if (event.type === 'progress') {
+          console.log(`Upload progress: ${event.progress}%`);
+          if (typeof event.progress === 'number') {
+            this.uploadProgress = event.progress;
+          }
         }
-        if (event.type === 'complete' && event.result) {
+
+        // 2) Completion event
+        if (event.type === 'complete') {
+          console.log("Upload complete event:", event);
+
+          if (!event.result) {
+            console.error("'complete' event missing result field:", event);
+            this.isUploading = false;
+            this.isError = true;
+            this.errorMessage = "Upload finished but did not return S3 bucket/key.";
+            return;
+          }
+
           this.isUploading = false;
           this.isSuccess = true;
+
+          console.log("Extracting bucket/key from event.result...");
+          console.log("event.result =", event.result);
 
           this.uploadedBucket = event.result.bucket;
           this.uploadedKey = event.result.key;
 
+          console.log("Extracted bucket:", this.uploadedBucket);
+          console.log("Extracted key:", this.uploadedKey);
+
           if (this.uploadedBucket && this.uploadedKey) {
+            console.log("Starting analysis with bucket/key...");
             this.startAnalysis(this.uploadedBucket, this.uploadedKey);
+          } else {
+            console.error("Missing bucket or key, cannot start analysis.");
+            this.isError = true;
+            this.errorMessage =
+              "Upload succeeded but S3 location is missing. Check backend.";
           }
         }
       },
+
       error: (err) => {
-        console.error('Upload error:', err);
+        console.error("Upload error:", err);
+        console.error("Full error object:", JSON.stringify(err, null, 2));
+
         this.isUploading = false;
         this.isError = true;
         this.errorMessage =
@@ -116,24 +151,44 @@ export class App {
   }
 
   private startAnalysis(bucket: string, key: string) {
+    console.log("startAnalysis() called.");
+    console.log("Bucket received:", bucket);
+    console.log("Key received:", key);
+
     this.isAnalyzing = true;
     this.isError = false;
     this.errorMessage = '';
+
+    console.log("Calling AnalysisService.analyzeFile with payload:", {
+      bucket,
+      key
+    });
+
     this.analysisService.analyzeFile(bucket, key).subscribe({
       next: (result) => {
+        console.log("AnalysisService response received.");
+        console.log("Raw analysis result:", JSON.parse(JSON.stringify(result)));
+
         this.isAnalyzing = false;
-        // push result into JourneyStateService so tabs can render
+
+        console.log("Storing result in JourneyStateService...");
         this.journeyState.setResult(result);
+
+        console.log("JourneyStateService updated successfully.");
       },
+
       error: (err) => {
-        console.error('Analysis error:', err);
+        console.error("AnalysisService encountered an error.");
+        console.error("Error object:", err);
+        console.error("Error JSON:", JSON.stringify(err, null, 2));
+
         this.isAnalyzing = false;
         this.isError = true;
-        this.errorMessage =
-          'Journey analysis failed. Please retry.';
+        this.errorMessage = "Journey analysis failed. Please retry.";
       },
     });
   }
+
 
   private resetStatus() {
     this.isError = false;
